@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
     Alert,
@@ -20,7 +20,7 @@ import {
     ArrowRightOutlined,
     SaveOutlined,
 } from "@ant-design/icons";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import api from "@/lib/axios";
 import SubjectSelect from "@/components/tests/SubjectSelect";
@@ -29,7 +29,6 @@ import SubTopicSelect from "@/components/tests/SubTopicSelect";
 import DifficultySelect from "@/components/tests/DifficultySelect";
 
 const { Title, Text } = Typography;
-
 
 type CreateTestForm = {
     name: string;
@@ -52,17 +51,58 @@ type ApiResponse<T> = {
     message?: string;
 };
 
-export default function CreateTestPage() {
+type TestData = {
+    id: string;
+    name: string;
+    type: string;
+    subject: string;
+    topics?: string[];
+    sub_topics?: string[];
+    difficulty: string;
+    correct_marks: number;
+    wrong_marks: number;
+    unattempt_marks: number;
+    total_time: number;
+    total_marks: number;
+    total_questions: number;
+    status?: string;
+};
+
+export default function TestPage() {
     const router = useRouter();
+    const params = useParams();
+
     const [messageApi, contextHolder] = message.useMessage();
 
     const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    /*
+     * /tests/new
+     *      ↓
+     * create mode
+     *
+     * /tests/123
+     *      ↓
+     * edit mode
+     */
+    const rawId = params?.id;
+
+    const testId =
+        typeof rawId === "string"
+            ? rawId
+            : Array.isArray(rawId)
+                ? rawId[0]
+                : undefined;
+
+    const isEditMode = Boolean(testId && testId !== "new");
 
     const {
         control,
         handleSubmit,
         watch,
         setValue,
+        reset,
         formState: { errors },
     } = useForm<CreateTestForm>({
         defaultValues: {
@@ -84,9 +124,54 @@ export default function CreateTestPage() {
     const selectedSubject = watch("subject");
     const selectedTopics = watch("topics");
 
+    /**
+     * Fetch existing test for edit mode
+     */
+    useEffect(() => {
+        if (!isEditMode || !testId) {
+            return;
+        }
+
+        const fetchTest = async () => {
+            try {
+                setLoading(true);
+
+                const response = await api.get<ApiResponse<TestData>>(
+                    `/tests/${testId}`,
+                );
+
+                const test = response.data.data;
+
+                reset({
+                    name: test.name || "",
+                    type: test.type || "",
+                    subject: test.subject || "",
+                    topics: test.topics || [],
+                    sub_topics: test.sub_topics || [],
+                    difficulty: test.difficulty || "medium",
+                    correct_marks: test.correct_marks ?? 4,
+                    wrong_marks: test.wrong_marks ?? -1,
+                    unattempt_marks: test.unattempt_marks ?? 0,
+                    total_time: test.total_time ?? 60,
+                    total_marks: test.total_marks ?? 250,
+                    total_questions: test.total_questions ?? 50,
+                });
+            } catch (error: any) {
+                const data = error?.response?.data;
+
+                messageApi.error(
+                    data?.message || "Unable to load test",
+                );
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchTest();
+    }, [isEditMode, testId, reset, messageApi]);
 
     /**
-     * Save test
+     * Save / Update test
      */
     const onSubmit = async (
         values: CreateTestForm,
@@ -111,39 +196,76 @@ export default function CreateTestPage() {
                 status,
             };
 
-            const response = await api.post<ApiResponse<any>>(
-                "/tests",
-                payload,
-            );
+            let response;
 
-            // API returns HTTP 201 for successful creation
-            if (response.status === 201) {
+            if (isEditMode && testId) {
+                /*
+                 * EDIT
+                 */
+                response = await api.put<ApiResponse<TestData>>(
+                    `/tests/${testId}`,
+                    payload,
+                );
+            } else {
+                /*
+                 * CREATE
+                 */
+                response = await api.post<ApiResponse<TestData>>(
+                    "/tests",
+                    payload,
+                );
+            }
+
+            if (
+                response.status === 200 ||
+                response.status === 201
+            ) {
+                const savedTest = response.data.data;
+
                 messageApi.success(
-                    response.data.message || "Test created successfully",
+                    response.data.message ||
+                    (isEditMode
+                        ? "Test updated successfully"
+                        : "Test created successfully"),
                 );
 
-                const testId = response.data.data.id;
-                const subjectId = response.data.data.subject;
+                const savedTestId = savedTest.id;
+                const subjectId = savedTest.subject;
 
-                if (!testId || !subjectId) {
-                    messageApi.error("Test ID or Subject ID is missing");
+                if (!savedTestId || !subjectId) {
+                    messageApi.error(
+                        "Test ID or Subject ID is missing",
+                    );
                     return;
                 }
 
-                router.push(`/questions/${testId}/${subjectId}`);
+                /*
+                 * Continue to Questions page
+                 */
+                router.push(
+                    `/questions/${savedTestId}/${subjectId}`,
+                );
+
                 return;
             }
 
-            // Unexpected successful HTTP status
             messageApi.error(
-                response.data.message || "Unable to save test",
+                response.data.message ||
+                (isEditMode
+                    ? "Unable to update test"
+                    : "Unable to create test"),
             );
         } catch (error: any) {
             const response = error?.response;
             const data = response?.data;
 
-            // Server validation errors
-            if (data?.errors && Array.isArray(data.errors)) {
+            /*
+             * Validation errors
+             */
+            if (
+                data?.errors &&
+                Array.isArray(data.errors)
+            ) {
                 data.errors.forEach(
                     (validationError: {
                         type?: string;
@@ -153,7 +275,9 @@ export default function CreateTestPage() {
                         location?: string;
                     }) => {
                         if (validationError.msg) {
-                            messageApi.error(validationError.msg);
+                            messageApi.error(
+                                validationError.msg,
+                            );
                         }
                     },
                 );
@@ -161,9 +285,11 @@ export default function CreateTestPage() {
                 return;
             }
 
-            // General API error
             messageApi.error(
-                data?.message || "Unable to save test",
+                data?.message ||
+                (isEditMode
+                    ? "Unable to update test"
+                    : "Unable to create test"),
             );
         } finally {
             setSaving(false);
@@ -174,7 +300,19 @@ export default function CreateTestPage() {
         onSubmit(values, "draft"),
     );
 
-    const handleNext = handleSubmit((values) => onSubmit(values, "draft"));
+    const handleNext = handleSubmit((values) =>
+        onSubmit(values, "draft"),
+    );
+
+    if (loading) {
+        return (
+            <div className="flex min-h-screen items-center justify-center">
+                <Text type="secondary">
+                    Loading test...
+                </Text>
+            </div>
+        );
+    }
 
     return (
         <>
@@ -182,6 +320,7 @@ export default function CreateTestPage() {
 
             <div className="min-h-screen bg-gray-50 p-4 md:p-6">
                 <div className="mx-auto max-w-6xl">
+
                     {/* Header */}
                     <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
@@ -189,16 +328,25 @@ export default function CreateTestPage() {
                                 <Button
                                     type="text"
                                     icon={<ArrowLeftOutlined />}
-                                    onClick={() => router.push("/tests")}
+                                    onClick={() =>
+                                        router.push("/tests")
+                                    }
                                 />
 
                                 <div>
-                                    <Title level={3} className="!mb-0">
-                                        Create Test
+                                    <Title
+                                        level={3}
+                                        className="!mb-0"
+                                    >
+                                        {isEditMode
+                                            ? "Edit Test"
+                                            : "Create Test"}
                                     </Title>
 
                                     <Text type="secondary">
-                                        Create test details and configure the marking scheme
+                                        {isEditMode
+                                            ? "Update test details and configure the marking scheme"
+                                            : "Create test details and configure the marking scheme"}
                                     </Text>
                                 </div>
                             </Space>
@@ -210,7 +358,9 @@ export default function CreateTestPage() {
                                 loading={saving}
                                 onClick={handleSaveDraft}
                             >
-                                Save Draft
+                                {isEditMode
+                                    ? "Save Changes"
+                                    : "Save Draft"}
                             </Button>
 
                             <Button
@@ -252,46 +402,59 @@ export default function CreateTestPage() {
                         </div>
                     </Card>
 
-                    <form onSubmit={handleSubmit((values) => onSubmit(values, "draft"))}>
+                    <form
+                        onSubmit={handleSubmit((values) =>
+                            onSubmit(values, "draft"),
+                        )}
+                    >
                         {/* Basic Details */}
                         <Card
                             title="Basic Test Details"
                             className="mb-6"
-                            styles={{
-                                header: {
-                                    fontWeight: 600,
-                                },
-                            }}
                         >
                             <Row gutter={[20, 20]}>
+
                                 {/* Test Name */}
                                 <Col xs={24} md={12}>
                                     <Controller
                                         name="name"
                                         control={control}
                                         rules={{
-                                            required: "Test name is required",
+                                            required:
+                                                "Test name is required",
                                             minLength: {
                                                 value: 3,
-                                                message: "Test name must be at least 3 characters",
+                                                message:
+                                                    "Test name must be at least 3 characters",
                                             },
                                         }}
                                         render={({ field }) => (
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium">
-                                                    Test Name <span className="text-red-500">*</span>
+                                                    Test Name{" "}
+                                                    <span className="text-red-500">
+                                                        *
+                                                    </span>
                                                 </label>
 
                                                 <Input
                                                     {...field}
                                                     size="large"
                                                     placeholder="Enter test name"
-                                                    status={errors.name ? "error" : ""}
+                                                    status={
+                                                        errors.name
+                                                            ? "error"
+                                                            : ""
+                                                    }
                                                 />
 
                                                 {errors.name && (
                                                     <div className="mt-1 text-xs text-red-500">
-                                                        {errors.name.message}
+                                                        {
+                                                            errors
+                                                                .name
+                                                                .message
+                                                        }
                                                     </div>
                                                 )}
                                             </div>
@@ -305,12 +468,16 @@ export default function CreateTestPage() {
                                         name="type"
                                         control={control}
                                         rules={{
-                                            required: "Test type is required",
+                                            required:
+                                                "Test type is required",
                                         }}
                                         render={({ field }) => (
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium">
-                                                    Test Type <span className="text-red-500">*</span>
+                                                    Test Type{" "}
+                                                    <span className="text-red-500">
+                                                        *
+                                                    </span>
                                                 </label>
 
                                                 <Select
@@ -318,7 +485,11 @@ export default function CreateTestPage() {
                                                     size="large"
                                                     className="w-full"
                                                     placeholder="Select test type"
-                                                    status={errors.type ? "error" : ""}
+                                                    status={
+                                                        errors.type
+                                                            ? "error"
+                                                            : ""
+                                                    }
                                                     options={[
                                                         {
                                                             label: "Chapter Wise",
@@ -341,7 +512,11 @@ export default function CreateTestPage() {
 
                                                 {errors.type && (
                                                     <div className="mt-1 text-xs text-red-500">
-                                                        {errors.type.message}
+                                                        {
+                                                            errors
+                                                                .type
+                                                                .message
+                                                        }
                                                     </div>
                                                 )}
                                             </div>
@@ -355,7 +530,8 @@ export default function CreateTestPage() {
                                         name="subject"
                                         control={control}
                                         rules={{
-                                            required: "Subject is required",
+                                            required:
+                                                "Subject is required",
                                         }}
                                         render={({ field }) => (
                                             <SubjectSelect
@@ -363,11 +539,19 @@ export default function CreateTestPage() {
                                                 onChange={(value) => {
                                                     field.onChange(value);
 
-                                                    // Subject changed → clear dependent fields
-                                                    setValue("topics", []);
-                                                    setValue("sub_topics", []);
+                                                    setValue(
+                                                        "topics",
+                                                        [],
+                                                    );
+
+                                                    setValue(
+                                                        "sub_topics",
+                                                        [],
+                                                    );
                                                 }}
-                                                error={!!errors.subject}
+                                                error={
+                                                    !!errors.subject
+                                                }
                                             />
                                         )}
                                     />
@@ -379,19 +563,31 @@ export default function CreateTestPage() {
                                         name="difficulty"
                                         control={control}
                                         rules={{
-                                            required: "Difficulty is required",
+                                            required:
+                                                "Difficulty is required",
                                         }}
                                         render={({ field }) => (
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium">
                                                     Difficulty{" "}
-                                                    <span className="text-red-500">*</span>
+                                                    <span className="text-red-500">
+                                                        *
+                                                    </span>
                                                 </label>
 
                                                 <DifficultySelect
-                                                    value={field.value as "easy" | "medium" | "hard"}
-                                                    onChange={field.onChange}
-                                                    error={!!errors.difficulty}
+                                                    value={
+                                                        field.value as
+                                                        | "easy"
+                                                        | "medium"
+                                                        | "hard"
+                                                    }
+                                                    onChange={
+                                                        field.onChange
+                                                    }
+                                                    error={
+                                                        !!errors.difficulty
+                                                    }
                                                 />
                                             </div>
                                         )}
@@ -406,15 +602,23 @@ export default function CreateTestPage() {
                                         render={({ field }) => (
                                             <TopicSelect
                                                 label="Topics"
-                                                subjectId={selectedSubject}
+                                                subjectId={
+                                                    selectedSubject
+                                                }
                                                 value={field.value}
                                                 onChange={(value) => {
-                                                    field.onChange(value);
+                                                    field.onChange(
+                                                        value,
+                                                    );
 
-                                                    // Topics changed → clear sub-topics
-                                                    setValue("sub_topics", []);
+                                                    setValue(
+                                                        "sub_topics",
+                                                        [],
+                                                    );
                                                 }}
-                                                error={!!errors.topics}
+                                                error={
+                                                    !!errors.topics
+                                                }
                                             />
                                         )}
                                     />
@@ -427,10 +631,16 @@ export default function CreateTestPage() {
                                         control={control}
                                         render={({ field }) => (
                                             <SubTopicSelect
-                                                topicIds={selectedTopics}
+                                                topicIds={
+                                                    selectedTopics
+                                                }
                                                 value={field.value}
-                                                onChange={field.onChange}
-                                                error={!!errors.sub_topics}
+                                                onChange={
+                                                    field.onChange
+                                                }
+                                                error={
+                                                    !!errors.sub_topics
+                                                }
                                             />
                                         )}
                                     />
@@ -442,11 +652,6 @@ export default function CreateTestPage() {
                         <Card
                             title="Marking Scheme"
                             className="mb-6"
-                            extra={
-                                <Text type="secondary">
-                                    Configure marks for each response type
-                                </Text>
-                            }
                         >
                             <Row gutter={[20, 20]}>
                                 <Col xs={24} sm={8}>
@@ -466,7 +671,6 @@ export default function CreateTestPage() {
                                                     {...field}
                                                     size="large"
                                                     className="w-full"
-                                                    placeholder="4"
                                                     min={0}
                                                 />
                                             </div>
@@ -488,7 +692,6 @@ export default function CreateTestPage() {
                                                     {...field}
                                                     size="large"
                                                     className="w-full"
-                                                    placeholder="-1"
                                                     max={0}
                                                 />
                                             </div>
@@ -510,7 +713,6 @@ export default function CreateTestPage() {
                                                     {...field}
                                                     size="large"
                                                     className="w-full"
-                                                    placeholder="0"
                                                     min={0}
                                                 />
                                             </div>
@@ -534,7 +736,8 @@ export default function CreateTestPage() {
                                             required: "Required",
                                             min: {
                                                 value: 1,
-                                                message: "Time must be greater than 0",
+                                                message:
+                                                    "Time must be greater than 0",
                                             },
                                         }}
                                         render={({ field }) => (
@@ -563,7 +766,8 @@ export default function CreateTestPage() {
                                             required: "Required",
                                             min: {
                                                 value: 1,
-                                                message: "At least 1 question is required",
+                                                message:
+                                                    "At least 1 question is required",
                                             },
                                         }}
                                         render={({ field }) => (
@@ -591,7 +795,8 @@ export default function CreateTestPage() {
                                             required: "Required",
                                             min: {
                                                 value: 1,
-                                                message: "Total marks must be greater than 0",
+                                                message:
+                                                    "Total marks must be greater than 0",
                                             },
                                         }}
                                         render={({ field }) => (
@@ -613,13 +818,16 @@ export default function CreateTestPage() {
                             </Row>
                         </Card>
 
-                        {/* Information */}
                         <Alert
                             className="mb-6"
                             type="info"
                             showIcon
                             message="What's next?"
-                            description="After saving the test details, you will be taken to the question creation page where you can add MCQ questions and their answers."
+                            description={
+                                isEditMode
+                                    ? "After updating the test details, you will continue to the question creation page."
+                                    : "After saving the test details, you will be taken to the question creation page where you can add MCQ questions and their answers."
+                            }
                         />
 
                         {/* Bottom Actions */}
@@ -627,7 +835,9 @@ export default function CreateTestPage() {
                             <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row">
                                 <Button
                                     size="large"
-                                    onClick={() => router.push("/tests")}
+                                    onClick={() =>
+                                        router.push("/tests")
+                                    }
                                 >
                                     Cancel
                                 </Button>
@@ -638,7 +848,9 @@ export default function CreateTestPage() {
                                     loading={saving}
                                     onClick={handleSaveDraft}
                                 >
-                                    Save Draft
+                                    {isEditMode
+                                        ? "Save Changes"
+                                        : "Save Draft"}
                                 </Button>
 
                                 <Button

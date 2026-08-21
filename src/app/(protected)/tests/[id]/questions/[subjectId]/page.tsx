@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import {
     Alert,
@@ -12,6 +12,7 @@ import {
     Row,
     Select,
     Space,
+    Spin,
     Typography,
     message,
 } from "antd";
@@ -31,19 +32,22 @@ const { TextArea } = Input;
 type QuestionType = "mcq";
 type Difficulty = "easy" | "medium" | "hard";
 
+type Question = {
+    id?: string;
+    type: QuestionType;
+    subject: string;
+    question: string;
+    option1: string;
+    option2: string;
+    option3: string;
+    option4: string;
+    correct_option: string;
+    explanation: string;
+    difficulty: Difficulty;
+};
+
 type QuestionFormData = {
-    questions: {
-        type: QuestionType;
-        subject: string;
-        question: string;
-        option1: string;
-        option2: string;
-        option3: string;
-        option4: string;
-        correct_option: string;
-        explanation: string;
-        difficulty: Difficulty;
-    }[];
+    questions: Question[];
 };
 
 type ApiResponse<T> = {
@@ -63,37 +67,37 @@ type ValidationError = {
 export default function QuestionsPage() {
     const router = useRouter();
 
+    /**
+     * IMPORTANT:
+     *
+     * Route:
+     * /tests/[id]/questions/[subjectId]
+     *
+     * Therefore params are:
+     * id
+     * subjectId
+     */
     const params = useParams<{
-        testId: string;
+        id: string;
         subjectId: string;
     }>();
 
-    const testId = params.testId;
+    const testId = params.id;
     const subjectId = params.subjectId;
 
     const [messageApi, contextHolder] = message.useMessage();
+
     const [saving, setSaving] = useState(false);
+    const [loadingQuestions, setLoadingQuestions] = useState(true);
 
     const {
         control,
         handleSubmit,
+        reset,
         formState: { errors },
     } = useForm<QuestionFormData>({
         defaultValues: {
-            questions: [
-                {
-                    type: "mcq",
-                    subject: subjectId,
-                    question: "",
-                    option1: "",
-                    option2: "",
-                    option3: "",
-                    option4: "",
-                    correct_option: "option1",
-                    explanation: "",
-                    difficulty: "medium",
-                },
-            ],
+            questions: [],
         },
     });
 
@@ -102,7 +106,10 @@ export default function QuestionsPage() {
         name: "questions",
     });
 
-    const createEmptyQuestion = (): QuestionFormData["questions"][number] => ({
+    /**
+     * Create empty question
+     */
+    const createEmptyQuestion = (): Question => ({
         type: "mcq",
         subject: subjectId,
         question: "",
@@ -115,86 +122,311 @@ export default function QuestionsPage() {
         difficulty: "medium",
     });
 
+    /**
+     * Load existing questions
+     *
+     * Expected API:
+     *
+     * GET /questions?test_id=xxx&subject=xxx
+     */
+    useEffect(() => {
+        if (!testId || !subjectId) {
+            setLoadingQuestions(false);
+            return;
+        }
+
+        const fetchQuestions = async () => {
+            try {
+                setLoadingQuestions(true);
+
+                const response = await api.get<
+                    ApiResponse<Question[]>
+                >("/questions", {
+                    params: {
+                        test_id: testId,
+                        subject: subjectId,
+                    },
+                });
+
+                const questions = response.data.data || [];
+
+                if (questions.length > 0) {
+                    reset({
+                        questions: questions.map((question) => ({
+                            id: question.id,
+
+                            type: question.type || "mcq",
+
+                            subject:
+                                question.subject || subjectId,
+
+                            question:
+                                question.question || "",
+
+                            option1:
+                                question.option1 || "",
+
+                            option2:
+                                question.option2 || "",
+
+                            option3:
+                                question.option3 || "",
+
+                            option4:
+                                question.option4 || "",
+
+                            correct_option:
+                                question.correct_option ||
+                                "option1",
+
+                            explanation:
+                                question.explanation || "",
+
+                            difficulty:
+                                question.difficulty ||
+                                "medium",
+                        })),
+                    });
+                } else {
+                    reset({
+                        questions: [
+                            createEmptyQuestion(),
+                        ],
+                    });
+                }
+            } catch (error: any) {
+                const data = error?.response?.data;
+
+                messageApi.error(
+                    data?.message ||
+                    "Unable to load questions",
+                );
+
+                reset({
+                    questions: [
+                        createEmptyQuestion(),
+                    ],
+                });
+            } finally {
+                setLoadingQuestions(false);
+            }
+        };
+
+        fetchQuestions();
+    }, [
+        testId,
+        subjectId,
+        reset,
+        messageApi,
+    ]);
+
+    /**
+     * Add question
+     */
     const handleAddQuestion = () => {
         append(createEmptyQuestion());
     };
 
-    const onSubmit = async (values: QuestionFormData) => {
+    /**
+     * Submit questions
+     *
+     * If existing questions have an ID:
+     *     update them
+     *
+     * If they don't have an ID:
+     *     create them
+     */
+    const onSubmit = async (
+        values: QuestionFormData,
+    ) => {
         try {
             setSaving(true);
 
-            const payload = {
-                questions: values.questions.map((question) => ({
-                    type: question.type,
-                    question: question.question,
-                    option1: question.option1,
-                    option2: question.option2,
-                    option3: question.option3,
-                    option4: question.option4,
-                    correct_option: question.correct_option,
-                    explanation: question.explanation,
-                    difficulty: question.difficulty,
-
-                    // IDs from route
-                    test_id: testId,
-                    subject: subjectId,
-                })),
-            };
-
-            const response = await api.post<ApiResponse<any[]>>(
-                "/questions/bulk",
-                payload
-            );
-
-            if (response.status === 201) {
-                messageApi.success(
-                    response.data.message ||
-                        `Successfully created ${values.questions.length} questions`
+            /**
+             * Separate existing and new questions.
+             */
+            const existingQuestions =
+                values.questions.filter(
+                    (question) => question.id,
                 );
 
-                // router.push(`/tests/${testId}`);
+            const newQuestions =
+                values.questions.filter(
+                    (question) => !question.id,
+                );
 
-                return;
+            /**
+             * CREATE NEW QUESTIONS
+             */
+            if (newQuestions.length > 0) {
+                const createPayload = {
+                    questions:
+                        newQuestions.map(
+                            (question) => ({
+                                type: question.type,
+                                question:
+                                    question.question,
+                                option1:
+                                    question.option1,
+                                option2:
+                                    question.option2,
+                                option3:
+                                    question.option3,
+                                option4:
+                                    question.option4,
+                                correct_option:
+                                    question.correct_option,
+                                explanation:
+                                    question.explanation,
+                                difficulty:
+                                    question.difficulty,
+
+                                test_id: testId,
+                                subject: subjectId,
+                            }),
+                        ),
+                };
+
+                const createResponse =
+                    await api.post<ApiResponse<any[]>>(
+                        "/questions/bulk",
+                        createPayload,
+                    );
+
+                if (
+                    createResponse.status !==
+                    200 &&
+                    createResponse.status !==
+                    201
+                ) {
+                    throw new Error(
+                        createResponse.data.message ||
+                        "Unable to create questions",
+                    );
+                }
             }
 
-            messageApi.error(
-                response.data.message || "Unable to create questions"
+            /**
+             * UPDATE EXISTING QUESTIONS
+             *
+             * Assumes:
+             *
+             * PUT /questions/:id
+             */
+            for (
+                const question of existingQuestions
+            ) {
+                await api.put(
+                    `/questions/${question.id}`,
+                    {
+                        type: question.type,
+                        question:
+                            question.question,
+                        option1:
+                            question.option1,
+                        option2:
+                            question.option2,
+                        option3:
+                            question.option3,
+                        option4:
+                            question.option4,
+                        correct_option:
+                            question.correct_option,
+                        explanation:
+                            question.explanation,
+                        difficulty:
+                            question.difficulty,
+
+                        test_id: testId,
+                        subject: subjectId,
+                    },
+                );
+            }
+
+            messageApi.success(
+                `Successfully saved ${values.questions.length} question${values.questions.length !== 1
+                    ? "s"
+                    : ""
+                }`,
             );
+
+            router.push(
+                `/tests/${testId}/publish`,
+            );
+
+            return;
         } catch (error: any) {
             const data = error?.response?.data;
 
-            if (Array.isArray(data?.errors)) {
-                const errorsByPath = new Map<string, string>();
+            /**
+             * Server validation errors
+             */
+            if (
+                Array.isArray(data?.errors)
+            ) {
+                const errorsByPath =
+                    new Map<string, string>();
 
                 data.errors.forEach(
-                    (validationError: ValidationError) => {
+                    (
+                        validationError: ValidationError,
+                    ) => {
                         if (
                             validationError.path &&
                             validationError.msg &&
-                            !errorsByPath.has(validationError.path)
+                            !errorsByPath.has(
+                                validationError.path,
+                            )
                         ) {
                             errorsByPath.set(
                                 validationError.path,
-                                validationError.msg
+                                validationError.msg,
                             );
                         }
-                    }
+                    },
                 );
 
-                errorsByPath.forEach((msg, path) => {
-                    messageApi.error(`${path}: ${msg}`);
-                });
+                errorsByPath.forEach(
+                    (msg, path) => {
+                        messageApi.error(
+                            `${path}: ${msg}`,
+                        );
+                    },
+                );
 
                 return;
             }
 
             messageApi.error(
-                data?.message || "Unable to create questions"
+                data?.message ||
+                error?.message ||
+                "Unable to save questions",
             );
         } finally {
             setSaving(false);
         }
     };
+
+    /**
+     * Loading state
+     */
+    if (loadingQuestions) {
+        return (
+            <>
+                {contextHolder}
+
+                <div className="flex min-h-screen items-center justify-center bg-gray-50">
+                    <Space direction="vertical" align="center">
+                        <Spin size="large" />
+
+                        <Text type="secondary">
+                            Loading questions...
+                        </Text>
+                    </Space>
+                </div>
+            </>
+        );
+    }
 
     return (
         <>
@@ -202,31 +434,46 @@ export default function QuestionsPage() {
 
             <div className="min-h-screen bg-gray-50 p-4 md:p-6">
                 <div className="mx-auto max-w-6xl">
+
+                    {/* Header */}
                     <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <Space align="center">
                             <Button
                                 type="text"
-                                icon={<ArrowLeftOutlined />}
+                                icon={
+                                    <ArrowLeftOutlined />
+                                }
                                 onClick={() =>
-                                    router.push(`/tests/${testId}`)
+                                    router.push(
+                                        `/tests/${testId}`,
+                                    )
                                 }
                             />
 
                             <div>
-                                <Title level={3} className="!mb-0">
+                                <Title
+                                    level={3}
+                                    className="!mb-0"
+                                >
                                     Add Questions
                                 </Title>
 
                                 <Text type="secondary">
-                                    Add MCQ questions to your test
+                                    Add or update MCQ
+                                    questions for your
+                                    test
                                 </Text>
                             </div>
                         </Space>
 
                         <div className="flex gap-2">
                             <Button
-                                icon={<PlusOutlined />}
-                                onClick={handleAddQuestion}
+                                icon={
+                                    <PlusOutlined />
+                                }
+                                onClick={
+                                    handleAddQuestion
+                                }
                                 disabled={saving}
                             >
                                 Add Question
@@ -234,15 +481,20 @@ export default function QuestionsPage() {
 
                             <Button
                                 type="primary"
-                                icon={<SaveOutlined />}
+                                icon={
+                                    <SaveOutlined />
+                                }
                                 loading={saving}
-                                onClick={handleSubmit(onSubmit)}
+                                onClick={handleSubmit(
+                                    onSubmit,
+                                )}
                             >
                                 Save Questions
                             </Button>
                         </div>
                     </div>
 
+                    {/* Progress */}
                     <Card className="mb-6">
                         <div className="flex items-center gap-3">
                             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-sm font-semibold text-white">
@@ -263,98 +515,362 @@ export default function QuestionsPage() {
                         </div>
 
                         <div className="mt-2 flex justify-between text-xs text-gray-500">
-                            <span>Test Details</span>
-                            <span>Add Questions</span>
-                            <span>Preview & Publish</span>
+                            <span>
+                                Test Details
+                            </span>
+
+                            <span>
+                                Add Questions
+                            </span>
+
+                            <span>
+                                Preview & Publish
+                            </span>
                         </div>
                     </Card>
 
-                    <form onSubmit={handleSubmit(onSubmit)}>
-                        {fields.map((field, index) => {
-                            const questionErrors =
-                                errors.questions?.[index];
+                    <form
+                        onSubmit={handleSubmit(
+                            onSubmit,
+                        )}
+                    >
+                        {fields.map(
+                            (field, index) => {
+                                const questionErrors =
+                                    errors.questions?.[
+                                    index
+                                    ];
 
-                            return (
-                                <Card
-                                    key={field.id}
-                                    className="mb-6"
-                                    title={`Question ${index + 1}`}
-                                    extra={
-                                        fields.length > 1 ? (
-                                            <Button
-                                                danger
-                                                type="text"
-                                                icon={<DeleteOutlined />}
-                                                onClick={() =>
-                                                    remove(index)
+                                return (
+                                    <Card
+                                        key={field.id}
+                                        className="mb-6"
+                                        title={`Question ${index + 1
+                                            }`}
+                                        extra={
+                                            fields.length >
+                                                1 ? (
+                                                <Button
+                                                    danger
+                                                    type="text"
+                                                    icon={
+                                                        <DeleteOutlined />
+                                                    }
+                                                    onClick={() =>
+                                                        remove(
+                                                            index,
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        saving
+                                                    }
+                                                >
+                                                    Remove
+                                                </Button>
+                                            ) : null
+                                        }
+                                    >
+                                        <Row
+                                            gutter={[
+                                                20,
+                                                20,
+                                            ]}
+                                        >
+                                            {/* Question Type */}
+                                            <Col
+                                                xs={
+                                                    24
+                                                }
+                                                md={
+                                                    12
                                                 }
                                             >
-                                                Remove
-                                            </Button>
-                                        ) : null
-                                    }
-                                >
-                                    <Row gutter={[20, 20]}>
-                                        {/* Question Type */}
-                                        <Col xs={24} md={12}>
-                                            <Controller
-                                                name={`questions.${index}.type`}
-                                                control={control}
-                                                rules={{
-                                                    required:
-                                                        "Question type is required",
-                                                }}
-                                                render={({ field }) => (
-                                                    <div>
-                                                        <label className="mb-2 block text-sm font-medium">
-                                                            Question Type{" "}
-                                                            <span className="text-red-500">
-                                                                *
-                                                            </span>
-                                                        </label>
+                                                <Controller
+                                                    name={`questions.${index}.type`}
+                                                    control={
+                                                        control
+                                                    }
+                                                    rules={{
+                                                        required:
+                                                            "Question type is required",
+                                                    }}
+                                                    render={({
+                                                        field,
+                                                    }) => (
+                                                        <div>
+                                                            <label className="mb-2 block text-sm font-medium">
+                                                                Question
+                                                                Type{" "}
+                                                                <span className="text-red-500">
+                                                                    *
+                                                                </span>
+                                                            </label>
 
-                                                        <Select
-                                                            {...field}
-                                                            size="large"
-                                                            className="w-full"
-                                                            options={[
-                                                                {
-                                                                    label: "Multiple Choice Question",
-                                                                    value: "mcq",
-                                                                },
-                                                            ]}
-                                                            status={
-                                                                questionErrors?.type
-                                                                    ? "error"
-                                                                    : undefined
-                                                            }
-                                                        />
-
-                                                        {questionErrors?.type && (
-                                                            <div className="mt-1 text-xs text-red-500">
-                                                                {
-                                                                    questionErrors.type.message
+                                                            <Select
+                                                                {...field}
+                                                                size="large"
+                                                                className="w-full"
+                                                                options={[
+                                                                    {
+                                                                        label: "Multiple Choice Question",
+                                                                        value: "mcq",
+                                                                    },
+                                                                ]}
+                                                                status={
+                                                                    questionErrors?.type
+                                                                        ? "error"
+                                                                        : undefined
                                                                 }
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            />
-                                        </Col>
+                                                            />
 
-                                        {/* Difficulty */}
-                                        <Col xs={24} md={12}>
+                                                            {questionErrors?.type && (
+                                                                <div className="mt-1 text-xs text-red-500">
+                                                                    {
+                                                                        questionErrors
+                                                                            .type
+                                                                            .message
+                                                                    }
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                />
+                                            </Col>
+
+                                            {/* Difficulty */}
+                                            <Col
+                                                xs={
+                                                    24
+                                                }
+                                                md={
+                                                    12
+                                                }
+                                            >
+                                                <Controller
+                                                    name={`questions.${index}.difficulty`}
+                                                    control={
+                                                        control
+                                                    }
+                                                    rules={{
+                                                        required:
+                                                            "Difficulty is required",
+                                                    }}
+                                                    render={({
+                                                        field,
+                                                    }) => (
+                                                        <div>
+                                                            <label className="mb-2 block text-sm font-medium">
+                                                                Difficulty{" "}
+                                                                <span className="text-red-500">
+                                                                    *
+                                                                </span>
+                                                            </label>
+
+                                                            <Radio.Group
+                                                                {...field}
+                                                                options={[
+                                                                    {
+                                                                        label: "Easy",
+                                                                        value: "easy",
+                                                                    },
+                                                                    {
+                                                                        label: "Medium",
+                                                                        value: "medium",
+                                                                    },
+                                                                    {
+                                                                        label: "Hard",
+                                                                        value: "hard",
+                                                                    },
+                                                                ]}
+                                                            />
+
+                                                            {questionErrors?.difficulty && (
+                                                                <div className="mt-1 text-xs text-red-500">
+                                                                    {
+                                                                        questionErrors
+                                                                            .difficulty
+                                                                            .message
+                                                                    }
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                />
+                                            </Col>
+
+                                            {/* Question */}
+                                            <Col
+                                                xs={
+                                                    24
+                                                }
+                                            >
+                                                <Controller
+                                                    name={`questions.${index}.question`}
+                                                    control={
+                                                        control
+                                                    }
+                                                    rules={{
+                                                        required:
+                                                            "Question is required",
+                                                        minLength:
+                                                        {
+                                                            value: 3,
+                                                            message:
+                                                                "Question must be at least 3 characters",
+                                                        },
+                                                    }}
+                                                    render={({
+                                                        field,
+                                                    }) => (
+                                                        <div>
+                                                            <label className="mb-2 block text-sm font-medium">
+                                                                Question{" "}
+                                                                <span className="text-red-500">
+                                                                    *
+                                                                </span>
+                                                            </label>
+
+                                                            <TextArea
+                                                                {...field}
+                                                                rows={
+                                                                    4
+                                                                }
+                                                                placeholder="Enter your question"
+                                                                status={
+                                                                    questionErrors?.question
+                                                                        ? "error"
+                                                                        : undefined
+                                                                }
+                                                            />
+
+                                                            {questionErrors?.question && (
+                                                                <div className="mt-1 text-xs text-red-500">
+                                                                    {
+                                                                        questionErrors
+                                                                            .question
+                                                                            .message
+                                                                    }
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                />
+                                            </Col>
+                                        </Row>
+
+                                        {/* Options */}
+                                        <div className="mt-6">
+                                            <label className="mb-3 block text-sm font-semibold">
+                                                Answer
+                                                Options{" "}
+                                                <span className="text-red-500">
+                                                    *
+                                                </span>
+                                            </label>
+
+                                            <Row
+                                                gutter={[
+                                                    20,
+                                                    20,
+                                                ]}
+                                            >
+                                                {(
+                                                    [
+                                                        "option1",
+                                                        "option2",
+                                                        "option3",
+                                                        "option4",
+                                                    ] as const
+                                                ).map(
+                                                    (
+                                                        option,
+                                                        optionIndex,
+                                                    ) => (
+                                                        <Col
+                                                            key={
+                                                                option
+                                                            }
+                                                            xs={
+                                                                24
+                                                            }
+                                                            md={
+                                                                12
+                                                            }
+                                                        >
+                                                            <Controller
+                                                                name={`questions.${index}.${option}`}
+                                                                control={
+                                                                    control
+                                                                }
+                                                                rules={{
+                                                                    required: `Option ${optionIndex +
+                                                                        1
+                                                                        } is required`,
+                                                                }}
+                                                                render={({
+                                                                    field,
+                                                                }) => (
+                                                                    <div>
+                                                                        <label className="mb-2 block text-sm font-medium">
+                                                                            Option{" "}
+                                                                            {optionIndex +
+                                                                                1}
+                                                                        </label>
+
+                                                                        <Input
+                                                                            {...field}
+                                                                            size="large"
+                                                                            placeholder={`Enter option ${optionIndex +
+                                                                                1
+                                                                                }`}
+                                                                            status={
+                                                                                questionErrors?.[
+                                                                                    option
+                                                                                ]
+                                                                                    ? "error"
+                                                                                    : undefined
+                                                                            }
+                                                                        />
+
+                                                                        {questionErrors?.[
+                                                                            option
+                                                                        ] && (
+                                                                                <div className="mt-1 text-xs text-red-500">
+                                                                                    {
+                                                                                        questionErrors[
+                                                                                            option
+                                                                                        ]
+                                                                                            ?.message
+                                                                                    }
+                                                                                </div>
+                                                                            )}
+                                                                    </div>
+                                                                )}
+                                                            />
+                                                        </Col>
+                                                    ),
+                                                )}
+                                            </Row>
+                                        </div>
+
+                                        {/* Correct Answer */}
+                                        <div className="mt-6">
                                             <Controller
-                                                name={`questions.${index}.difficulty`}
-                                                control={control}
+                                                name={`questions.${index}.correct_option`}
+                                                control={
+                                                    control
+                                                }
                                                 rules={{
                                                     required:
-                                                        "Difficulty is required",
+                                                        "Correct option is required",
                                                 }}
-                                                render={({ field }) => (
+                                                render={({
+                                                    field,
+                                                }) => (
                                                     <div>
                                                         <label className="mb-2 block text-sm font-medium">
-                                                            Difficulty{" "}
+                                                            Correct
+                                                            Answer{" "}
                                                             <span className="text-red-500">
                                                                 *
                                                             </span>
@@ -362,53 +878,62 @@ export default function QuestionsPage() {
 
                                                         <Radio.Group
                                                             {...field}
-                                                            size="large"
-                                                            options={[
-                                                                {
-                                                                    label: "Easy",
-                                                                    value: "easy",
-                                                                },
-                                                                {
-                                                                    label: "Medium",
-                                                                    value: "medium",
-                                                                },
-                                                                {
-                                                                    label: "Hard",
-                                                                    value: "hard",
-                                                                },
-                                                            ]}
-                                                        />
+                                                            className="w-full"
+                                                        >
+                                                            <Space direction="vertical">
+                                                                <Radio value="option1">
+                                                                    Option
+                                                                    1
+                                                                </Radio>
 
-                                                        {questionErrors?.difficulty && (
+                                                                <Radio value="option2">
+                                                                    Option
+                                                                    2
+                                                                </Radio>
+
+                                                                <Radio value="option3">
+                                                                    Option
+                                                                    3
+                                                                </Radio>
+
+                                                                <Radio value="option4">
+                                                                    Option
+                                                                    4
+                                                                </Radio>
+                                                            </Space>
+                                                        </Radio.Group>
+
+                                                        {questionErrors?.correct_option && (
                                                             <div className="mt-1 text-xs text-red-500">
                                                                 {
-                                                                    questionErrors.difficulty.message
+                                                                    questionErrors
+                                                                        .correct_option
+                                                                        .message
                                                                 }
                                                             </div>
                                                         )}
                                                     </div>
                                                 )}
                                             />
-                                        </Col>
+                                        </div>
 
-                                        {/* Question */}
-                                        <Col xs={24}>
+                                        {/* Explanation */}
+                                        <div className="mt-6">
                                             <Controller
-                                                name={`questions.${index}.question`}
-                                                control={control}
+                                                name={`questions.${index}.explanation`}
+                                                control={
+                                                    control
+                                                }
                                                 rules={{
                                                     required:
-                                                        "Question is required",
-                                                    minLength: {
-                                                        value: 3,
-                                                        message:
-                                                            "Question must be at least 3 characters",
-                                                    },
+                                                        "Explanation is required",
                                                 }}
-                                                render={({ field }) => (
+                                                render={({
+                                                    field,
+                                                }) => (
                                                     <div>
                                                         <label className="mb-2 block text-sm font-medium">
-                                                            Question{" "}
+                                                            Explanation{" "}
                                                             <span className="text-red-500">
                                                                 *
                                                             </span>
@@ -416,234 +941,74 @@ export default function QuestionsPage() {
 
                                                         <TextArea
                                                             {...field}
-                                                            rows={4}
-                                                            placeholder="Enter your question"
+                                                            rows={
+                                                                3
+                                                            }
+                                                            placeholder="Explain why this answer is correct"
                                                             status={
-                                                                questionErrors?.question
+                                                                questionErrors?.explanation
                                                                     ? "error"
                                                                     : undefined
                                                             }
                                                         />
 
-                                                        {questionErrors?.question && (
+                                                        {questionErrors?.explanation && (
                                                             <div className="mt-1 text-xs text-red-500">
                                                                 {
-                                                                    questionErrors.question.message
+                                                                    questionErrors
+                                                                        .explanation
+                                                                        .message
                                                                 }
                                                             </div>
                                                         )}
                                                     </div>
                                                 )}
                                             />
-                                        </Col>
-                                    </Row>
+                                        </div>
+                                    </Card>
+                                );
+                            },
+                        )}
 
-                                    {/* Options */}
-                                    <div className="mt-6">
-                                        <label className="mb-3 block text-sm font-semibold">
-                                            Answer Options{" "}
-                                            <span className="text-red-500">
-                                                *
-                                            </span>
-                                        </label>
-
-                                        <Row gutter={[20, 20]}>
-                                            {(
-                                                [
-                                                    "option1",
-                                                    "option2",
-                                                    "option3",
-                                                    "option4",
-                                                ] as const
-                                            ).map(
-                                                (
-                                                    option,
-                                                    optionIndex
-                                                ) => (
-                                                    <Col
-                                                        key={option}
-                                                        xs={24}
-                                                        md={12}
-                                                    >
-                                                        <Controller
-                                                            name={`questions.${index}.${option}`}
-                                                            control={control}
-                                                            rules={{
-                                                                required: `Option ${
-                                                                    optionIndex +
-                                                                    1
-                                                                } is required`,
-                                                            }}
-                                                            render={({
-                                                                field,
-                                                            }) => (
-                                                                <div>
-                                                                    <label className="mb-2 block text-sm font-medium">
-                                                                        Option{" "}
-                                                                        {optionIndex +
-                                                                            1}
-                                                                    </label>
-
-                                                                    <Input
-                                                                        {...field}
-                                                                        size="large"
-                                                                        placeholder={`Enter option ${
-                                                                            optionIndex +
-                                                                            1
-                                                                        }`}
-                                                                        status={
-                                                                            questionErrors?.[
-                                                                                option
-                                                                            ]
-                                                                                ? "error"
-                                                                                : undefined
-                                                                        }
-                                                                    />
-
-                                                                    {questionErrors?.[
-                                                                        option
-                                                                    ] && (
-                                                                        <div className="mt-1 text-xs text-red-500">
-                                                                            {
-                                                                                questionErrors[
-                                                                                    option
-                                                                                ]
-                                                                                    ?.message
-                                                                            }
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        />
-                                                    </Col>
-                                                )
-                                            )}
-                                        </Row>
-                                    </div>
-
-                                    {/* Correct Answer */}
-                                    <div className="mt-6">
-                                        <Controller
-                                            name={`questions.${index}.correct_option`}
-                                            control={control}
-                                            rules={{
-                                                required:
-                                                    "Correct option is required",
-                                            }}
-                                            render={({ field }) => (
-                                                <div>
-                                                    <label className="mb-2 block text-sm font-medium">
-                                                        Correct Answer{" "}
-                                                        <span className="text-red-500">
-                                                            *
-                                                        </span>
-                                                    </label>
-
-                                                    <Radio.Group
-                                                        {...field}
-                                                        className="w-full"
-                                                    >
-                                                        <Space direction="vertical">
-                                                            <Radio value="option1">
-                                                                Option 1
-                                                            </Radio>
-                                                            <Radio value="option2">
-                                                                Option 2
-                                                            </Radio>
-                                                            <Radio value="option3">
-                                                                Option 3
-                                                            </Radio>
-                                                            <Radio value="option4">
-                                                                Option 4
-                                                            </Radio>
-                                                        </Space>
-                                                    </Radio.Group>
-
-                                                    {questionErrors?.correct_option && (
-                                                        <div className="mt-1 text-xs text-red-500">
-                                                            {
-                                                                questionErrors.correct_option.message
-                                                            }
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        />
-                                    </div>
-
-                                    {/* Explanation */}
-                                    <div className="mt-6">
-                                        <Controller
-                                            name={`questions.${index}.explanation`}
-                                            control={control}
-                                            rules={{
-                                                required:
-                                                    "Explanation is required",
-                                            }}
-                                            render={({ field }) => (
-                                                <div>
-                                                    <label className="mb-2 block text-sm font-medium">
-                                                        Explanation{" "}
-                                                        <span className="text-red-500">
-                                                            *
-                                                        </span>
-                                                    </label>
-
-                                                    <TextArea
-                                                        {...field}
-                                                        rows={3}
-                                                        placeholder="Explain why this answer is correct"
-                                                        status={
-                                                            questionErrors?.explanation
-                                                                ? "error"
-                                                                : undefined
-                                                        }
-                                                    />
-
-                                                    {questionErrors?.explanation && (
-                                                        <div className="mt-1 text-xs text-red-500">
-                                                            {
-                                                                questionErrors.explanation.message
-                                                            }
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        />
-                                    </div>
-                                </Card>
-                            );
-                        })}
-
+                        {/* Add Question */}
                         <Button
                             type="dashed"
                             size="large"
                             block
-                            icon={<PlusOutlined />}
-                            onClick={handleAddQuestion}
+                            icon={
+                                <PlusOutlined />
+                            }
+                            onClick={
+                                handleAddQuestion
+                            }
                             className="mb-6"
+                            disabled={saving}
                         >
                             Add Another Question
                         </Button>
 
+                        {/* Information */}
                         <Alert
                             className="mb-6"
                             type="info"
                             showIcon
-                            message="Bulk Question Creation"
-                            description={`You are adding ${
-                                fields.length
-                            } question${
-                                fields.length > 1 ? "s" : ""
-                            }. All questions will be submitted together.`}
+                            message="Question Management"
+                            description={`You have ${fields.length} question${fields.length !==
+                                1
+                                ? "s"
+                                : ""
+                                }. Existing questions will be updated and new questions will be created.`}
                         />
 
+                        {/* Bottom Actions */}
                         <Card>
                             <div className="flex flex-col-reverse justify-end gap-3 sm:flex-row">
                                 <Button
                                     size="large"
                                     onClick={() =>
-                                        router.push(`/tests/${testId}`)
+                                        router.push(
+                                            `/tests/${testId}`,
+                                        )
                                     }
                                 >
                                     Cancel
@@ -651,8 +1016,12 @@ export default function QuestionsPage() {
 
                                 <Button
                                     size="large"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleAddQuestion}
+                                    icon={
+                                        <PlusOutlined />
+                                    }
+                                    onClick={
+                                        handleAddQuestion
+                                    }
                                     disabled={saving}
                                 >
                                     Add Question
@@ -661,12 +1030,19 @@ export default function QuestionsPage() {
                                 <Button
                                     type="primary"
                                     size="large"
-                                    icon={<SaveOutlined />}
+                                    icon={
+                                        <SaveOutlined />
+                                    }
                                     loading={saving}
                                     htmlType="submit"
                                 >
-                                    Save {fields.length} Question
-                                    {fields.length > 1 ? "s" : ""}
+                                    Save{" "}
+                                    {fields.length}{" "}
+                                    Question
+                                    {fields.length !==
+                                        1
+                                        ? "s"
+                                        : ""}
                                 </Button>
                             </div>
                         </Card>

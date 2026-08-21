@@ -13,7 +13,9 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
-
+import { EditOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
+import { useRouter } from 'next/navigation';
 import { testService } from '@/services/test.service';
 import {
     Test,
@@ -26,7 +28,7 @@ export default function TestTable() {
     const [tests, setTests] = useState<Test[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
+    const router = useRouter();
     const [search, setSearch] = useState('');
 
     // Pagination state
@@ -188,6 +190,22 @@ export default function TestTable() {
                         year: 'numeric',
                     }).format(new Date(date))}
                 </span>
+            ),
+        },
+        {
+            title: 'Actions',
+            key: 'actions',
+            width: 100,
+            fixed: 'right',
+            render: (_, record) => (
+                <Button
+                    type="link"
+                    icon={<EditOutlined />}
+                    onClick={() => router.push(`/tests/${record.id}`)}
+                    className="!px-0"
+                >
+                    Edit
+                </Button>
             ),
         },
     ];

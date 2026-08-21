@@ -48,7 +48,7 @@ export default function DashboardLayout({
             label: 'Dashboard',
         },
         {
-            key: '/test-creation',
+            key: '/tests/new',
             icon: <FileAddOutlined />,
             label: 'Test Creation',
         },
