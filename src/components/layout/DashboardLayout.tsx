@@ -77,6 +77,7 @@ export default function DashboardLayout({
 
     const handleLogout = () => {
         authService.logout();
+        router.replace('/login');
     };
 
     const userMenuItems: MenuProps['items'] = [

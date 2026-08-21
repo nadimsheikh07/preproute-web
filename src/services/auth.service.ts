@@ -14,20 +14,20 @@ export const authService = {
       throw new Error(result.message || "Login failed");
     }
 
-    // Store JWT
     localStorage.setItem(AUTH_TOKEN_KEY, result.data.token);
 
-    // Store user
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.data.user));
 
     return result;
   },
 
   logout() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
-
-    window.location.href = "/login";
   },
 
   getToken(): string | null {
@@ -57,6 +57,6 @@ export const authService = {
   },
 
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    return Boolean(this.getToken());
   },
 };

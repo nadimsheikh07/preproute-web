@@ -1,8 +1,9 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { Spin } from 'antd';
 import { usePathname, useRouter } from 'next/navigation';
+import { authService } from '@/services/auth.service';
 
 interface AuthGuardProps {
     children: ReactNode;
@@ -14,34 +15,22 @@ export default function AuthGuard({
     const router = useRouter();
     const pathname = usePathname();
 
-    const [checking, setChecking] = useState(true);
-    const [authenticated, setAuthenticated] = useState(false);
+    const isAuthenticated = authService.isAuthenticated();
 
     useEffect(() => {
-        const token = localStorage.getItem('auth_token');
-
-        if (!token) {
+        if (!isAuthenticated) {
             router.replace(
                 `/login?redirect=${encodeURIComponent(pathname)}`
             );
-
-            return;
         }
+    }, [isAuthenticated, pathname, router]);
 
-        setAuthenticated(true);
-        setChecking(false);
-    }, [pathname, router]);
-
-    if (checking) {
+    if (!isAuthenticated) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
+            <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC]">
                 <Spin size="large" />
             </div>
         );
-    }
-
-    if (!authenticated) {
-        return null;
     }
 
     return <>{children}</>;
