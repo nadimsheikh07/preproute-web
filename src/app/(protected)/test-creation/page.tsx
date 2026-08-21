@@ -26,6 +26,7 @@ import api from "@/lib/axios";
 import SubjectSelect from "@/components/tests/SubjectSelect";
 import TopicSelect from "@/components/tests/TopicSelect";
 import SubTopicSelect from "@/components/tests/SubTopicSelect";
+import DifficultySelect from "@/components/tests/DifficultySelect";
 
 const { Title, Text } = Typography;
 
@@ -344,28 +345,14 @@ export default function CreateTestPage() {
                                         render={({ field }) => (
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium">
-                                                    Difficulty <span className="text-red-500">*</span>
+                                                    Difficulty{" "}
+                                                    <span className="text-red-500">*</span>
                                                 </label>
 
-                                                <Select
-                                                    {...field}
-                                                    size="large"
-                                                    className="w-full"
-                                                    placeholder="Select difficulty"
-                                                    options={[
-                                                        {
-                                                            label: "Easy",
-                                                            value: "easy",
-                                                        },
-                                                        {
-                                                            label: "Medium",
-                                                            value: "medium",
-                                                        },
-                                                        {
-                                                            label: "Hard",
-                                                            value: "hard",
-                                                        },
-                                                    ]}
+                                                <DifficultySelect
+                                                    value={field.value as "easy" | "medium" | "hard"}
+                                                    onChange={field.onChange}
+                                                    error={!!errors.difficulty}
                                                 />
                                             </div>
                                         )}
