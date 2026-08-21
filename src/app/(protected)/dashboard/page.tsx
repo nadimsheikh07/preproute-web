@@ -80,37 +80,6 @@ export default function DashboardPage() {
         <div className="min-h-screen bg-[#F8FAFC]">
 
             {/* =====================================================
-          HEADER
-      ====================================================== */}
-            <header className="sticky top-0 z-20 border-b border-[#EAECF0] bg-white">
-                <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-10">
-
-                    {/* Logo */}
-                    <div className="flex items-center">
-                        <span className="text-[20px] font-bold tracking-[-0.02em] text-[#101828]">
-                            Test Management
-                        </span>
-                    </div>
-
-                    {/* User */}
-                    <div className="flex items-center gap-3">
-                        <div className="hidden text-right sm:block">
-                            <p className="text-[14px] font-semibold text-[#344054]">
-                                {userName}
-                            </p>
-                            <p className="text-[12px] text-[#98A2B3]">
-                                {user?.role || 'Admin'}
-                            </p>
-                        </div>
-
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EAF3FF] text-[14px] font-bold text-[#1677FF]">
-                            {userName.charAt(0).toUpperCase()}
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            {/* =====================================================
           MAIN
       ====================================================== */}
             <main className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">

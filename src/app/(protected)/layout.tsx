@@ -1,16 +1,16 @@
-import { ReactNode } from 'react';
 import AuthGuard from '@/components/auth/AuthGuard';
-
-interface ProtectedLayoutProps {
-    children: ReactNode;
-}
+import DashboardLayout from '@/components/layout/DashboardLayout';
 
 export default function ProtectedLayout({
     children,
-}: ProtectedLayoutProps) {
+}: {
+    children: React.ReactNode;
+}) {
     return (
         <AuthGuard>
-            {children}
+            <DashboardLayout>
+                {children}
+            </DashboardLayout>
         </AuthGuard>
     );
 }
