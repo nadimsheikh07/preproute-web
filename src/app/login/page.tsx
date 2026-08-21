@@ -275,8 +275,7 @@ export default function LoginPage() {
                 block
                 loading={loading}
                 icon={!loading && <ArrowRightOutlined />}
-                iconPosition="end"
-                className="!mt-7 !h-[52px] !rounded-[8px] !border-0 !bg-[#1677FF] !text-[15px] !font-semibold shadow-[0_4px_14px_rgba(22,119,255,0.20)] transition-all hover:!bg-[#0958D9]"
+                iconPlacement="end"
               >
                 Sign in
               </Button>

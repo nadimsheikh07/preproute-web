@@ -191,12 +191,12 @@ export default function DashboardPage() {
 
                                     <div className="flex shrink-0 items-center gap-3">
                                         <Tag
-                                            bordered={false}
                                             color={
                                                 test.status === 'Published'
                                                     ? 'success'
                                                     : 'default'
                                             }
+                                            variant="filled"
                                             className="!rounded-full !px-3"
                                         >
                                             {test.status}
