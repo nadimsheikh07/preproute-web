@@ -26,33 +26,41 @@ type SubTopicSelectProps = {
     topicIds?: string[];
     value?: string[];
     onChange?: (value: string[]) => void;
+    error?: boolean;
 };
 
 export default function SubTopicSelect({
     topicIds = [],
     value = [],
     onChange,
+    error = false,
 }: SubTopicSelectProps) {
     const [options, setOptions] = useState<SelectOption[]>([]);
     const [loading, setLoading] = useState(false);
 
+    const hasTopics = topicIds.length > 0;
+
     useEffect(() => {
-        if (!topicIds.length) {
-            setOptions([]);
-            onChange?.([]);
+        if (!hasTopics) {
             return;
         }
 
-        const fetchSubTopics = async () => {
-            try {
-                setLoading(true);
+        let cancelled = false;
 
+        const fetchSubTopics = async () => {
+            setLoading(true);
+
+            try {
                 const response = await api.post<ApiResponse<SubTopic[]>>(
                     "/sub-topics/multi-topics",
                     {
                         topicIds,
                     },
                 );
+
+                if (cancelled) {
+                    return;
+                }
 
                 setOptions(
                     response.data.data.map((subTopic) => ({
@@ -61,33 +69,46 @@ export default function SubTopicSelect({
                     })),
                 );
             } catch (error) {
-                console.error("Failed to fetch sub-topics:", error);
-                setOptions([]);
+                if (!cancelled) {
+                    console.error(
+                        "Failed to fetch sub-topics:",
+                        error,
+                    );
+
+                    setOptions([]);
+                }
             } finally {
-                setLoading(false);
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         };
 
         fetchSubTopics();
-    }, [topicIds]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [hasTopics, topicIds]);
 
     return (
         <Select
             mode="multiple"
-            value={value}
+            value={hasTopics ? value : []}
             onChange={onChange}
             size="large"
             className="w-full"
             placeholder={
-                topicIds.length
+                hasTopics
                     ? "Select sub-topics"
                     : "Select topics first"
             }
-            disabled={!topicIds.length}
+            disabled={!hasTopics}
             loading={loading}
-            options={options}
+            options={hasTopics ? options : []}
             maxTagCount="responsive"
             allowClear
+            status={error ? "error" : undefined}
         />
     );
 }

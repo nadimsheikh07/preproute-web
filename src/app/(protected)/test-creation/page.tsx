@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
     Alert,
@@ -28,12 +28,7 @@ import TopicSelect from "@/components/tests/TopicSelect";
 import SubTopicSelect from "@/components/tests/SubTopicSelect";
 
 const { Title, Text } = Typography;
-const { TextArea } = Input;
 
-type Option = {
-    label: string;
-    value: string;
-};
 
 type CreateTestForm = {
     name: string;
@@ -54,23 +49,6 @@ type ApiResponse<T> = {
     success: boolean;
     data: T;
     message?: string;
-};
-
-type Subject = {
-    id: string;
-    name: string;
-};
-
-type Topic = {
-    id: string;
-    name: string;
-    subject_id: string;
-};
-
-type SubTopic = {
-    id: string;
-    name: string;
-    topic_id: string;
 };
 
 export default function CreateTestPage() {
@@ -340,23 +318,17 @@ export default function CreateTestPage() {
                                             required: "Subject is required",
                                         }}
                                         render={({ field }) => (
-                                            <div>
-                                                <label className="mb-2 block text-sm font-medium">
-                                                    Subject <span className="text-red-500">*</span>
-                                                </label>
+                                            <SubjectSelect
+                                                value={field.value}
+                                                onChange={(value) => {
+                                                    field.onChange(value);
 
-                                                <SubjectSelect
-                                                    value={field.value}
-                                                    onChange={field.onChange}
-                                                    error={!!errors.subject}
-                                                />
-
-                                                {errors.subject && (
-                                                    <div className="mt-1 text-xs text-red-500">
-                                                        {errors.subject.message}
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    // Subject changed → clear dependent fields
+                                                    setValue("topics", []);
+                                                    setValue("sub_topics", []);
+                                                }}
+                                                error={!!errors.subject}
+                                            />
                                         )}
                                     />
                                 </Col>
@@ -405,29 +377,18 @@ export default function CreateTestPage() {
                                     <Controller
                                         name="topics"
                                         control={control}
-                                        rules={{
-                                            validate: (value) =>
-                                                value.length > 0 || "Select at least one topic",
-                                        }}
                                         render={({ field }) => (
-                                            <div>
-                                                <label className="mb-2 block text-sm font-medium">
-                                                    Topics <span className="text-red-500">*</span>
-                                                </label>
+                                            <TopicSelect
+                                                subjectId={selectedSubject}
+                                                value={field.value}
+                                                onChange={(value) => {
+                                                    field.onChange(value);
 
-                                                <TopicSelect
-                                                    subjectId={selectedSubject}
-                                                    value={field.value}
-                                                    onChange={field.onChange}
-                                                    error={!!errors.topics}
-                                                />
-
-                                                {errors.topics && (
-                                                    <div className="mt-1 text-xs text-red-500">
-                                                        {errors.topics.message}
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    // Topics changed → clear sub-topics
+                                                    setValue("sub_topics", []);
+                                                }}
+                                                error={!!errors.topics}
+                                            />
                                         )}
                                     />
                                 </Col>
@@ -438,17 +399,12 @@ export default function CreateTestPage() {
                                         name="sub_topics"
                                         control={control}
                                         render={({ field }) => (
-                                            <div>
-                                                <label className="mb-2 block text-sm font-medium">
-                                                    Sub-topics
-                                                </label>
-
-                                                <SubTopicSelect
-                                                    topicIds={selectedTopics}
-                                                    value={field.value}
-                                                    onChange={field.onChange}
-                                                />
-                                            </div>
+                                            <SubTopicSelect
+                                                topicIds={selectedTopics}
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                error={!!errors.sub_topics}
+                                            />
                                         )}
                                     />
                                 </Col>

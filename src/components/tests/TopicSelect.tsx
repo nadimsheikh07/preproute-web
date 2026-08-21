@@ -40,51 +40,67 @@ export default function TopicSelect({
 
     useEffect(() => {
         if (!subjectId) {
-            setOptions([]);
-            onChange?.([]);
             return;
         }
 
-        const fetchTopics = async () => {
-            try {
-                setLoading(true);
+        let cancelled = false;
 
+        const fetchTopics = async () => {
+            setLoading(true);
+
+            try {
                 const response = await api.get<ApiResponse<Topic[]>>(
                     `/topics/subject/${subjectId}`,
                 );
 
-                setOptions(
-                    response.data.data.map((topic) => ({
-                        label: topic.name,
-                        value: topic.id,
-                    })),
-                );
+                if (cancelled) {
+                    return;
+                }
+
+                const topicOptions = response.data.data.map((topic) => ({
+                    label: topic.name,
+                    value: topic.id,
+                }));
+
+                setOptions(topicOptions);
             } catch (error) {
-                console.error("Failed to fetch topics:", error);
-                setOptions([]);
+                if (!cancelled) {
+                    console.error("Failed to fetch topics:", error);
+                    setOptions([]);
+                }
             } finally {
-                setLoading(false);
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         };
 
         fetchTopics();
+
+        return () => {
+            cancelled = true;
+        };
     }, [subjectId]);
+
+    const disabled = !subjectId;
 
     return (
         <Select
             mode="multiple"
-            value={value}
+            value={disabled ? [] : value}
             onChange={onChange}
             size="large"
             className="w-full"
             placeholder={
-                subjectId ? "Select topics" : "Select subject first"
+                disabled
+                    ? "Select subject first"
+                    : "Select topics"
             }
-            disabled={!subjectId}
+            disabled={disabled}
             loading={loading}
-            options={options}
+            options={disabled ? [] : options}
             maxTagCount="responsive"
-            status={error ? "error" : ""}
+            status={error ? "error" : undefined}
             allowClear
         />
     );
