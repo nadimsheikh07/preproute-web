@@ -36,13 +36,6 @@ type FormValues = {
     scheduledDateTime?: Dayjs;
 };
 
-type TestResponse = {
-    id: string;
-    status: string;
-    scheduled_date: string | null;
-    expiry_date: string | null;
-};
-
 const LIVE_UNTIL_OPTIONS = [
     {
         label: "Always Available",

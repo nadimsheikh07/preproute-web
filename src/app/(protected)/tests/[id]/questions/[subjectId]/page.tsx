@@ -29,12 +29,11 @@ import {
 import { useParams, useRouter } from "next/navigation";
 
 import api from "@/lib/axios";
+import { Difficulty, QuestionType, TestResponse } from "@/types/test";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-type QuestionType = "mcq";
-type Difficulty = "easy" | "medium" | "hard";
 
 type Question = {
     id?: string;
@@ -61,33 +60,6 @@ type ApiResponse<T> = {
     message?: string;
 };
 
-type TestResponse = {
-    id: string;
-    name: string;
-    type: string;
-    subject: string;
-    topics: string[];
-    sub_topics: string[];
-    questions: string[];
-    correct_marks: number;
-    unattempt_marks: number;
-    wrong_marks: number;
-    difficulty: Difficulty;
-    total_marks: number;
-    total_time: number;
-    total_questions: number;
-    slot: unknown;
-    hidden_from_moderator: unknown;
-    created_by: number;
-    created_at: string;
-    updated_by: number;
-    updated_at: string;
-    paragraph_question: unknown;
-    status: string;
-    scheduled_date: string | null;
-    expiry_date: string | null;
-    original_files: unknown[];
-};
 
 type ValidationError = {
     type?: string;
@@ -189,7 +161,7 @@ export default function QuestionsPage() {
 
         difficulty:
             question?.difficulty === "easy" ||
-            question?.difficulty === "hard"
+                question?.difficulty === "hard"
                 ? question.difficulty
                 : "medium",
     });
@@ -368,8 +340,8 @@ export default function QuestionsPage() {
 
                 messageApi.error(
                     data?.message ||
-                        error?.message ||
-                        "Unable to load questions",
+                    error?.message ||
+                    "Unable to load questions",
                 );
 
                 reset({
@@ -547,13 +519,11 @@ export default function QuestionsPage() {
              * Success
              */
             messageApi.success(
-                `Successfully saved ${
-                    values.questions.length
-                } question${
-                    values.questions.length !==
+                `Successfully saved ${values.questions.length
+                } question${values.questions.length !==
                     1
-                        ? "s"
-                        : ""
+                    ? "s"
+                    : ""
                 }`,
             );
 
@@ -619,7 +589,7 @@ export default function QuestionsPage() {
                 } else {
                     messageApi.error(
                         data?.message ||
-                            "Validation failed",
+                        "Validation failed",
                     );
                 }
 
@@ -628,8 +598,8 @@ export default function QuestionsPage() {
 
             messageApi.error(
                 data?.message ||
-                    error?.message ||
-                    "Unable to save questions",
+                error?.message ||
+                "Unable to save questions",
             );
         } finally {
             setSaving(false);
@@ -770,16 +740,15 @@ export default function QuestionsPage() {
                             (field, index) => {
                                 const questionErrors =
                                     errors.questions?.[
-                                        index
+                                    index
                                     ];
 
                                 return (
                                     <Card
                                         key={field.id}
                                         className="mb-6"
-                                        title={`Question ${
-                                            index + 1
-                                        }`}
+                                        title={`Question ${index + 1
+                                            }`}
                                         extra={
                                             fields.length >
                                                 1 ? (
@@ -934,11 +903,11 @@ export default function QuestionsPage() {
                                                         required:
                                                             "Question is required",
                                                         minLength:
-                                                            {
-                                                                value: 3,
-                                                                message:
-                                                                    "Question must be at least 3 characters",
-                                                            },
+                                                        {
+                                                            value: 3,
+                                                            message:
+                                                                "Question must be at least 3 characters",
+                                                        },
                                                     }}
                                                     render={({
                                                         field,
@@ -1022,10 +991,9 @@ export default function QuestionsPage() {
                                                                     control
                                                                 }
                                                                 rules={{
-                                                                    required: `Option ${
-                                                                        optionIndex +
+                                                                    required: `Option ${optionIndex +
                                                                         1
-                                                                    } is required`,
+                                                                        } is required`,
                                                                 }}
                                                                 render={({
                                                                     field,
@@ -1040,10 +1008,9 @@ export default function QuestionsPage() {
                                                                         <Input
                                                                             {...field}
                                                                             size="large"
-                                                                            placeholder={`Enter option ${
-                                                                                optionIndex +
+                                                                            placeholder={`Enter option ${optionIndex +
                                                                                 1
-                                                                            }`}
+                                                                                }`}
                                                                             status={
                                                                                 questionErrors?.[
                                                                                     option
@@ -1056,14 +1023,14 @@ export default function QuestionsPage() {
                                                                         {questionErrors?.[
                                                                             option
                                                                         ] && (
-                                                                            <div className="mt-1 text-xs text-red-500">
-                                                                                {
-                                                                                    questionErrors[
-                                                                                        option
-                                                                                    ]?.message
-                                                                                }
-                                                                            </div>
-                                                                        )}
+                                                                                <div className="mt-1 text-xs text-red-500">
+                                                                                    {
+                                                                                        questionErrors[
+                                                                                            option
+                                                                                        ]?.message
+                                                                                    }
+                                                                                </div>
+                                                                            )}
                                                                     </div>
                                                                 )}
                                                             />
@@ -1211,13 +1178,11 @@ export default function QuestionsPage() {
                             type="info"
                             showIcon
                             message="Question Management"
-                            description={`You have ${
-                                fields.length
-                            } question${
-                                fields.length !== 1
+                            description={`You have ${fields.length
+                                } question${fields.length !== 1
                                     ? "s"
                                     : ""
-                            }. Existing questions will be updated and new questions will be created.`}
+                                }. Existing questions will be updated and new questions will be created.`}
                         />
 
                         {/* Bottom Actions */}
@@ -1260,7 +1225,7 @@ export default function QuestionsPage() {
                                     {fields.length}{" "}
                                     Question
                                     {fields.length !==
-                                    1
+                                        1
                                         ? "s"
                                         : ""}
                                 </Button>
