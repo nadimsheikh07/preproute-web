@@ -243,7 +243,7 @@ export default function TestPage() {
                  * Continue to Questions page
                  */
                 router.push(
-                    `/questions/${savedTestId}/${subjectId}`,
+                    `/tests/${savedTestId}/questions/${subjectId}`,
                 );
 
                 return;

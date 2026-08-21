@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import {
+    Controller,
+    useFieldArray,
+    useForm,
+} from "react-hook-form";
 import {
     Alert,
     Button,
@@ -51,9 +55,38 @@ type QuestionFormData = {
 };
 
 type ApiResponse<T> = {
-    success: boolean;
+    status?: string;
+    success?: boolean;
     data: T;
     message?: string;
+};
+
+type TestResponse = {
+    id: string;
+    name: string;
+    type: string;
+    subject: string;
+    topics: string[];
+    sub_topics: string[];
+    questions: string[];
+    correct_marks: number;
+    unattempt_marks: number;
+    wrong_marks: number;
+    difficulty: Difficulty;
+    total_marks: number;
+    total_time: number;
+    total_questions: number;
+    slot: unknown;
+    hidden_from_moderator: unknown;
+    created_by: number;
+    created_at: string;
+    updated_by: number;
+    updated_at: string;
+    paragraph_question: unknown;
+    status: string;
+    scheduled_date: string | null;
+    expiry_date: string | null;
+    original_files: unknown[];
 };
 
 type ValidationError = {
@@ -67,16 +100,6 @@ type ValidationError = {
 export default function QuestionsPage() {
     const router = useRouter();
 
-    /**
-     * IMPORTANT:
-     *
-     * Route:
-     * /tests/[id]/questions/[subjectId]
-     *
-     * Therefore params are:
-     * id
-     * subjectId
-     */
     const params = useParams<{
         id: string;
         subjectId: string;
@@ -85,10 +108,12 @@ export default function QuestionsPage() {
     const testId = params.id;
     const subjectId = params.subjectId;
 
-    const [messageApi, contextHolder] = message.useMessage();
+    const [messageApi, contextHolder] =
+        message.useMessage();
 
     const [saving, setSaving] = useState(false);
-    const [loadingQuestions, setLoadingQuestions] = useState(true);
+    const [loadingQuestions, setLoadingQuestions] =
+        useState(true);
 
     const {
         control,
@@ -101,10 +126,11 @@ export default function QuestionsPage() {
         },
     });
 
-    const { fields, append, remove } = useFieldArray({
-        control,
-        name: "questions",
-    });
+    const { fields, append, remove } =
+        useFieldArray({
+            control,
+            name: "questions",
+        });
 
     /**
      * Create empty question
@@ -123,11 +149,61 @@ export default function QuestionsPage() {
     });
 
     /**
-     * Load existing questions
+     * Map API question to form question
+     */
+    const mapQuestionToForm = (
+        question: any,
+    ): Question => ({
+        id: question?.id,
+
+        type:
+            question?.type === "mcq"
+                ? "mcq"
+                : "mcq",
+
+        subject:
+            question?.subject ||
+            subjectId,
+
+        question:
+            question?.question || "",
+
+        option1:
+            question?.option1 || "",
+
+        option2:
+            question?.option2 || "",
+
+        option3:
+            question?.option3 || "",
+
+        option4:
+            question?.option4 || "",
+
+        correct_option:
+            question?.correct_option ||
+            "option1",
+
+        explanation:
+            question?.explanation || "",
+
+        difficulty:
+            question?.difficulty === "easy" ||
+            question?.difficulty === "hard"
+                ? question.difficulty
+                : "medium",
+    });
+
+    /**
+     * Load questions
      *
-     * Expected API:
+     * 1. GET /tests/:id
      *
-     * GET /questions?test_id=xxx&subject=xxx
+     * 2. Read test.questions
+     *
+     * 3. POST /questions/fetchBulk
+     *
+     * 4. Populate form
      */
     useEffect(() => {
         if (!testId || !subjectId) {
@@ -139,53 +215,140 @@ export default function QuestionsPage() {
             try {
                 setLoadingQuestions(true);
 
-                const response = await api.get<
-                    ApiResponse<Question[]>
-                >("/questions", {
-                    params: {
-                        test_id: testId,
-                        subject: subjectId,
-                    },
-                });
+                /**
+                 * --------------------------------------------------
+                 * STEP 1
+                 * Fetch test details
+                 * --------------------------------------------------
+                 */
+                const testResponse =
+                    await api.get<
+                        ApiResponse<TestResponse>
+                    >(`/tests/${testId}`);
 
-                const questions = response.data.data || [];
+                const test =
+                    testResponse.data?.data;
 
-                if (questions.length > 0) {
+                if (!test) {
+                    throw new Error(
+                        "Unable to fetch test details",
+                    );
+                }
+
+                /**
+                 * Question IDs from test
+                 */
+                const questionIds =
+                    Array.isArray(test.questions)
+                        ? test.questions
+                        : [];
+
+                /**
+                 * --------------------------------------------------
+                 * STEP 2
+                 * No questions
+                 * --------------------------------------------------
+                 */
+                if (
+                    questionIds.length === 0
+                ) {
                     reset({
-                        questions: questions.map((question) => ({
-                            id: question.id,
+                        questions: [
+                            createEmptyQuestion(),
+                        ],
+                    });
 
-                            type: question.type || "mcq",
+                    return;
+                }
 
-                            subject:
-                                question.subject || subjectId,
+                /**
+                 * --------------------------------------------------
+                 * STEP 3
+                 * Fetch questions in bulk
+                 *
+                 * POST /questions/fetchBulk
+                 * --------------------------------------------------
+                 */
+                const bulkResponse =
+                    await api.post<
+                        ApiResponse<any[]>
+                    >(
+                        "/questions/fetchBulk",
+                        {
+                            question_ids:
+                                questionIds,
+                        },
+                    );
 
-                            question:
-                                question.question || "",
+                const questions =
+                    bulkResponse.data?.data;
 
-                            option1:
-                                question.option1 || "",
+                if (
+                    !Array.isArray(
+                        questions,
+                    ) ||
+                    questions.length === 0
+                ) {
+                    reset({
+                        questions: [
+                            createEmptyQuestion(),
+                        ],
+                    });
 
-                            option2:
-                                question.option2 || "",
+                    return;
+                }
 
-                            option3:
-                                question.option3 || "",
+                /**
+                 * --------------------------------------------------
+                 * STEP 4
+                 * Preserve original question order
+                 *
+                 * API fetchBulk may not guarantee the same
+                 * order as test.questions.
+                 * --------------------------------------------------
+                 */
+                const questionMap =
+                    new Map<
+                        string,
+                        any
+                    >();
 
-                            option4:
-                                question.option4 || "",
+                questions.forEach(
+                    (question) => {
+                        if (question?.id) {
+                            questionMap.set(
+                                question.id,
+                                question,
+                            );
+                        }
+                    },
+                );
 
-                            correct_option:
-                                question.correct_option ||
-                                "option1",
+                const orderedQuestions =
+                    questionIds
+                        .map(
+                            (questionId) =>
+                                questionMap.get(
+                                    questionId,
+                                ),
+                        )
+                        .filter(Boolean);
 
-                            explanation:
-                                question.explanation || "",
-
-                            difficulty:
-                                question.difficulty ||
-                                "medium",
-                        })),
+                /**
+                 * --------------------------------------------------
+                 * STEP 5
+                 * Populate react-hook-form
+                 * --------------------------------------------------
+                 */
+                if (
+                    orderedQuestions.length >
+                    0
+                ) {
+                    reset({
+                        questions:
+                            orderedQuestions.map(
+                                mapQuestionToForm,
+                            ),
                     });
                 } else {
                     reset({
@@ -195,11 +358,18 @@ export default function QuestionsPage() {
                     });
                 }
             } catch (error: any) {
-                const data = error?.response?.data;
+                console.error(
+                    "Unable to load questions:",
+                    error,
+                );
+
+                const data =
+                    error?.response?.data;
 
                 messageApi.error(
                     data?.message ||
-                    "Unable to load questions",
+                        error?.message ||
+                        "Unable to load questions",
                 );
 
                 reset({
@@ -229,134 +399,178 @@ export default function QuestionsPage() {
 
     /**
      * Submit questions
-     *
-     * If existing questions have an ID:
-     *     update them
-     *
-     * If they don't have an ID:
-     *     create them
      */
     const onSubmit = async (
         values: QuestionFormData,
     ) => {
+        if (
+            !values.questions ||
+            values.questions.length === 0
+        ) {
+            messageApi.error(
+                "Please add at least one question",
+            );
+
+            return;
+        }
+
         try {
             setSaving(true);
 
             /**
-             * Separate existing and new questions.
+             * Separate existing and new questions
              */
             const existingQuestions =
                 values.questions.filter(
-                    (question) => question.id,
+                    (question) =>
+                        Boolean(question.id),
                 );
 
             const newQuestions =
                 values.questions.filter(
-                    (question) => !question.id,
+                    (question) =>
+                        !question.id,
                 );
 
             /**
+             * --------------------------------------------------
              * CREATE NEW QUESTIONS
+             *
+             * POST /questions/bulk
+             * --------------------------------------------------
              */
             if (newQuestions.length > 0) {
                 const createPayload = {
                     questions:
                         newQuestions.map(
                             (question) => ({
-                                type: question.type,
+                                type:
+                                    question.type,
+
                                 question:
                                     question.question,
+
                                 option1:
                                     question.option1,
+
                                 option2:
                                     question.option2,
+
                                 option3:
                                     question.option3,
+
                                 option4:
                                     question.option4,
+
                                 correct_option:
                                     question.correct_option,
+
                                 explanation:
                                     question.explanation,
+
                                 difficulty:
                                     question.difficulty,
 
-                                test_id: testId,
-                                subject: subjectId,
+                                test_id:
+                                    testId,
+
+                                subject:
+                                    subjectId,
                             }),
                         ),
                 };
 
-                const createResponse =
-                    await api.post<ApiResponse<any[]>>(
-                        "/questions/bulk",
-                        createPayload,
-                    );
-
-                if (
-                    createResponse.status !==
-                    200 &&
-                    createResponse.status !==
-                    201
-                ) {
-                    throw new Error(
-                        createResponse.data.message ||
-                        "Unable to create questions",
-                    );
-                }
-            }
-
-            /**
-             * UPDATE EXISTING QUESTIONS
-             *
-             * Assumes:
-             *
-             * PUT /questions/:id
-             */
-            for (
-                const question of existingQuestions
-            ) {
-                await api.put(
-                    `/questions/${question.id}`,
-                    {
-                        type: question.type,
-                        question:
-                            question.question,
-                        option1:
-                            question.option1,
-                        option2:
-                            question.option2,
-                        option3:
-                            question.option3,
-                        option4:
-                            question.option4,
-                        correct_option:
-                            question.correct_option,
-                        explanation:
-                            question.explanation,
-                        difficulty:
-                            question.difficulty,
-
-                        test_id: testId,
-                        subject: subjectId,
-                    },
+                await api.post<
+                    ApiResponse<any[]>
+                >(
+                    "/questions/bulk",
+                    createPayload,
                 );
             }
 
+            /**
+             * --------------------------------------------------
+             * UPDATE EXISTING QUESTIONS
+             *
+             * PUT /questions/:id
+             * --------------------------------------------------
+             */
+            if (
+                existingQuestions.length >
+                0
+            ) {
+                await Promise.all(
+                    existingQuestions.map(
+                        (question) =>
+                            api.put(
+                                `/questions/${question.id}`,
+                                {
+                                    type:
+                                        question.type,
+
+                                    question:
+                                        question.question,
+
+                                    option1:
+                                        question.option1,
+
+                                    option2:
+                                        question.option2,
+
+                                    option3:
+                                        question.option3,
+
+                                    option4:
+                                        question.option4,
+
+                                    correct_option:
+                                        question.correct_option,
+
+                                    explanation:
+                                        question.explanation,
+
+                                    difficulty:
+                                        question.difficulty,
+
+                                    test_id:
+                                        testId,
+
+                                    subject:
+                                        subjectId,
+                                },
+                            ),
+                    ),
+                );
+            }
+
+            /**
+             * Success
+             */
             messageApi.success(
-                `Successfully saved ${values.questions.length} question${values.questions.length !== 1
-                    ? "s"
-                    : ""
+                `Successfully saved ${
+                    values.questions.length
+                } question${
+                    values.questions.length !==
+                    1
+                        ? "s"
+                        : ""
                 }`,
             );
 
+            /**
+             * Go to publish page
+             */
             router.push(
                 `/tests/${testId}/publish`,
             );
-
-            return;
         } catch (error: any) {
-            const data = error?.response?.data;
+            console.error(
+                "Unable to save questions:",
+                error,
+            );
+
+            const data =
+                error?.response?.data;
 
             /**
              * Server validation errors
@@ -365,7 +579,10 @@ export default function QuestionsPage() {
                 Array.isArray(data?.errors)
             ) {
                 const errorsByPath =
-                    new Map<string, string>();
+                    new Map<
+                        string,
+                        string
+                    >();
 
                 data.errors.forEach(
                     (
@@ -386,21 +603,33 @@ export default function QuestionsPage() {
                     },
                 );
 
-                errorsByPath.forEach(
-                    (msg, path) => {
-                        messageApi.error(
-                            `${path}: ${msg}`,
-                        );
-                    },
-                );
+                if (
+                    errorsByPath.size > 0
+                ) {
+                    errorsByPath.forEach(
+                        (
+                            validationMessage,
+                            path,
+                        ) => {
+                            messageApi.error(
+                                `${path}: ${validationMessage}`,
+                            );
+                        },
+                    );
+                } else {
+                    messageApi.error(
+                        data?.message ||
+                            "Validation failed",
+                    );
+                }
 
                 return;
             }
 
             messageApi.error(
                 data?.message ||
-                error?.message ||
-                "Unable to save questions",
+                    error?.message ||
+                    "Unable to save questions",
             );
         } finally {
             setSaving(false);
@@ -416,7 +645,10 @@ export default function QuestionsPage() {
                 {contextHolder}
 
                 <div className="flex min-h-screen items-center justify-center bg-gray-50">
-                    <Space direction="vertical" align="center">
+                    <Space
+                        direction="vertical"
+                        align="center"
+                    >
                         <Spin size="large" />
 
                         <Text type="secondary">
@@ -466,7 +698,7 @@ export default function QuestionsPage() {
                             </div>
                         </Space>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Button
                                 icon={
                                     <PlusOutlined />
@@ -497,19 +729,19 @@ export default function QuestionsPage() {
                     {/* Progress */}
                     <Card className="mb-6">
                         <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-sm font-semibold text-white">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-semibold text-white">
                                 ✓
                             </div>
 
                             <div className="h-[2px] flex-1 bg-green-600" />
 
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
                                 2
                             </div>
 
                             <div className="h-[2px] flex-1 bg-gray-200" />
 
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-500">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-500">
                                 3
                             </div>
                         </div>
@@ -538,15 +770,16 @@ export default function QuestionsPage() {
                             (field, index) => {
                                 const questionErrors =
                                     errors.questions?.[
-                                    index
+                                        index
                                     ];
 
                                 return (
                                     <Card
                                         key={field.id}
                                         className="mb-6"
-                                        title={`Question ${index + 1
-                                            }`}
+                                        title={`Question ${
+                                            index + 1
+                                        }`}
                                         extra={
                                             fields.length >
                                                 1 ? (
@@ -578,12 +811,8 @@ export default function QuestionsPage() {
                                         >
                                             {/* Question Type */}
                                             <Col
-                                                xs={
-                                                    24
-                                                }
-                                                md={
-                                                    12
-                                                }
+                                                xs={24}
+                                                md={12}
                                             >
                                                 <Controller
                                                     name={`questions.${index}.type`}
@@ -639,12 +868,8 @@ export default function QuestionsPage() {
 
                                             {/* Difficulty */}
                                             <Col
-                                                xs={
-                                                    24
-                                                }
-                                                md={
-                                                    12
-                                                }
+                                                xs={24}
+                                                md={12}
                                             >
                                                 <Controller
                                                     name={`questions.${index}.difficulty`}
@@ -699,11 +924,7 @@ export default function QuestionsPage() {
                                             </Col>
 
                                             {/* Question */}
-                                            <Col
-                                                xs={
-                                                    24
-                                                }
-                                            >
+                                            <Col xs={24}>
                                                 <Controller
                                                     name={`questions.${index}.question`}
                                                     control={
@@ -713,11 +934,11 @@ export default function QuestionsPage() {
                                                         required:
                                                             "Question is required",
                                                         minLength:
-                                                        {
-                                                            value: 3,
-                                                            message:
-                                                                "Question must be at least 3 characters",
-                                                        },
+                                                            {
+                                                                value: 3,
+                                                                message:
+                                                                    "Question must be at least 3 characters",
+                                                            },
                                                     }}
                                                     render={({
                                                         field,
@@ -732,9 +953,7 @@ export default function QuestionsPage() {
 
                                                             <TextArea
                                                                 {...field}
-                                                                rows={
-                                                                    4
-                                                                }
+                                                                rows={4}
                                                                 placeholder="Enter your question"
                                                                 status={
                                                                     questionErrors?.question
@@ -803,9 +1022,10 @@ export default function QuestionsPage() {
                                                                     control
                                                                 }
                                                                 rules={{
-                                                                    required: `Option ${optionIndex +
+                                                                    required: `Option ${
+                                                                        optionIndex +
                                                                         1
-                                                                        } is required`,
+                                                                    } is required`,
                                                                 }}
                                                                 render={({
                                                                     field,
@@ -820,9 +1040,10 @@ export default function QuestionsPage() {
                                                                         <Input
                                                                             {...field}
                                                                             size="large"
-                                                                            placeholder={`Enter option ${optionIndex +
+                                                                            placeholder={`Enter option ${
+                                                                                optionIndex +
                                                                                 1
-                                                                                }`}
+                                                                            }`}
                                                                             status={
                                                                                 questionErrors?.[
                                                                                     option
@@ -835,15 +1056,14 @@ export default function QuestionsPage() {
                                                                         {questionErrors?.[
                                                                             option
                                                                         ] && (
-                                                                                <div className="mt-1 text-xs text-red-500">
-                                                                                    {
-                                                                                        questionErrors[
-                                                                                            option
-                                                                                        ]
-                                                                                            ?.message
-                                                                                    }
-                                                                                </div>
-                                                                            )}
+                                                                            <div className="mt-1 text-xs text-red-500">
+                                                                                {
+                                                                                    questionErrors[
+                                                                                        option
+                                                                                    ]?.message
+                                                                                }
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             />
@@ -941,9 +1161,7 @@ export default function QuestionsPage() {
 
                                                         <TextArea
                                                             {...field}
-                                                            rows={
-                                                                3
-                                                            }
+                                                            rows={3}
                                                             placeholder="Explain why this answer is correct"
                                                             status={
                                                                 questionErrors?.explanation
@@ -993,11 +1211,13 @@ export default function QuestionsPage() {
                             type="info"
                             showIcon
                             message="Question Management"
-                            description={`You have ${fields.length} question${fields.length !==
-                                1
-                                ? "s"
-                                : ""
-                                }. Existing questions will be updated and new questions will be created.`}
+                            description={`You have ${
+                                fields.length
+                            } question${
+                                fields.length !== 1
+                                    ? "s"
+                                    : ""
+                            }. Existing questions will be updated and new questions will be created.`}
                         />
 
                         {/* Bottom Actions */}
@@ -1040,7 +1260,7 @@ export default function QuestionsPage() {
                                     {fields.length}{" "}
                                     Question
                                     {fields.length !==
-                                        1
+                                    1
                                         ? "s"
                                         : ""}
                                 </Button>
