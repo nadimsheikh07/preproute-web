@@ -39,7 +39,11 @@ export default function TestTable() {
                 setLoading(true);
                 setError(null);
 
-                const data = await testService.getTests();
+                const data = await testService.getTests({
+                    page: 1,
+                    limit: 100,
+                    search
+                });
 
                 setTests(data);
             } catch (error) {
