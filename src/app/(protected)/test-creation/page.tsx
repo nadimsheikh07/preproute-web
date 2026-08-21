@@ -360,12 +360,13 @@ export default function CreateTestPage() {
                                 </Col>
 
                                 {/* Topics */}
-                                <Col xs={24}>
+                                <Col xs={24} md={12}>
                                     <Controller
                                         name="topics"
                                         control={control}
                                         render={({ field }) => (
                                             <TopicSelect
+                                                label="Topics"
                                                 subjectId={selectedSubject}
                                                 value={field.value}
                                                 onChange={(value) => {
@@ -381,7 +382,7 @@ export default function CreateTestPage() {
                                 </Col>
 
                                 {/* Sub Topics */}
-                                <Col xs={24}>
+                                <Col xs={24} md={12}>
                                     <Controller
                                         name="sub_topics"
                                         control={control}

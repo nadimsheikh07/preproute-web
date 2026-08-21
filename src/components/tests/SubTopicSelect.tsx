@@ -23,6 +23,7 @@ type ApiResponse<T> = {
 };
 
 type SubTopicSelectProps = {
+    label?: string;
     topicIds?: string[];
     value?: string[];
     onChange?: (value: string[]) => void;
@@ -30,6 +31,7 @@ type SubTopicSelectProps = {
 };
 
 export default function SubTopicSelect({
+    label = "Sub Topics",
     topicIds = [],
     value = [],
     onChange,
@@ -92,23 +94,30 @@ export default function SubTopicSelect({
     }, [hasTopics, topicIds]);
 
     return (
-        <Select
-            mode="multiple"
-            value={hasTopics ? value : []}
-            onChange={onChange}
-            size="large"
-            className="w-full"
-            placeholder={
-                hasTopics
-                    ? "Select sub-topics"
-                    : "Select topics first"
-            }
-            disabled={!hasTopics}
-            loading={loading}
-            options={hasTopics ? options : []}
-            maxTagCount="responsive"
-            allowClear
-            status={error ? "error" : undefined}
-        />
+        <div className="w-full">
+            {label && (
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                    {label}
+                </label>
+            )}
+            <Select
+                mode="multiple"
+                value={hasTopics ? value : []}
+                onChange={onChange}
+                size="large"
+                className="w-full"
+                placeholder={
+                    hasTopics
+                        ? "Select sub-topics"
+                        : "Select topics first"
+                }
+                disabled={!hasTopics}
+                loading={loading}
+                options={hasTopics ? options : []}
+                maxTagCount="responsive"
+                allowClear
+                status={error ? "error" : undefined}
+            />
+        </div>
     );
 }

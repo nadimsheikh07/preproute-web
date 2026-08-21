@@ -23,6 +23,7 @@ type ApiResponse<T> = {
 };
 
 type TopicSelectProps = {
+    label?: string;
     subjectId?: string;
     value?: string[];
     onChange?: (value: string[]) => void;
@@ -30,6 +31,7 @@ type TopicSelectProps = {
 };
 
 export default function TopicSelect({
+    label = "Topic",
     subjectId,
     value = [],
     onChange,
@@ -85,23 +87,30 @@ export default function TopicSelect({
     const disabled = !subjectId;
 
     return (
-        <Select
-            mode="multiple"
-            value={disabled ? [] : value}
-            onChange={onChange}
-            size="large"
-            className="w-full"
-            placeholder={
-                disabled
-                    ? "Select subject first"
-                    : "Select topics"
-            }
-            disabled={disabled}
-            loading={loading}
-            options={disabled ? [] : options}
-            maxTagCount="responsive"
-            status={error ? "error" : undefined}
-            allowClear
-        />
+        <div className="w-full">
+            {label && (
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                    {label}
+                </label>
+            )}
+            <Select
+                mode="multiple"
+                value={disabled ? [] : value}
+                onChange={onChange}
+                size="large"
+                className="w-full"
+                placeholder={
+                    disabled
+                        ? "Select subject first"
+                        : "Select topics"
+                }
+                disabled={disabled}
+                loading={loading}
+                options={disabled ? [] : options}
+                maxTagCount="responsive"
+                status={error ? "error" : undefined}
+                allowClear
+            />
+        </div>
     );
 }

@@ -25,12 +25,16 @@ type SubjectSelectProps = {
     value?: string;
     onChange?: (value: string) => void;
     error?: boolean;
+    label?: string;
+    required?: boolean;
 };
 
 export default function SubjectSelect({
     value,
     onChange,
     error = false,
+    label = "Subject",
+    required = false,
 }: SubjectSelectProps) {
     const [options, setOptions] = useState<SelectOption[]>([]);
     const [loading, setLoading] = useState(false);
@@ -61,18 +65,25 @@ export default function SubjectSelect({
     }, []);
 
     return (
-        <Select
-            value={value}
-            onChange={onChange}
-            size="large"
-            className="w-full"
-            showSearch
-            loading={loading}
-            placeholder="Select subject"
-            optionFilterProp="label"
-            status={error ? "error" : ""}
-            options={options}
-            allowClear
-        />
+        <div className="w-full">
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+                {label}
+                {required && <span className="ml-1 text-red-500">*</span>}
+            </label>
+
+            <Select
+                value={value}
+                onChange={onChange}
+                size="large"
+                className="w-full"
+                showSearch
+                loading={loading}
+                placeholder="Select subject"
+                optionFilterProp="label"
+                status={error ? "error" : ""}
+                options={options}
+                allowClear
+            />
+        </div>
     );
 }
