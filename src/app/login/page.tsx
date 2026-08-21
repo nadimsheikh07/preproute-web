@@ -10,6 +10,7 @@ import {
   ArrowRightOutlined,
 } from '@ant-design/icons';
 import { Controller, useForm } from 'react-hook-form';
+import { authService } from '@/services/auth.service';
 
 interface LoginFormValues {
   userId: string;
@@ -38,16 +39,25 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
-      console.log('Login:', values);
+      const response = await authService.login({
+        userId: values.userId,
+        password: values.password,
+      });
 
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      console.log('Login response:', response);
 
-      message.success('Login successful');
+      message.success(response.message || 'Login successful');
 
-      router.push('/dashboard');
-    } catch {
-      message.error('Unable to sign in. Please try again.');
+      router.replace('/dashboard');
+    } catch (error: any) {
+      console.error('Login error:', error);
+
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Unable to sign in. Please try again.';
+
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
